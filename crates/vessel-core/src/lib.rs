@@ -921,36 +921,39 @@ fn watch_foreground(live: Arc<Live>, activity: Arc<Mutex<Activity>>, shell: Opti
     if !cfg!(unix) {
         return;
     }
-    thread::spawn(move || {
-        // A shell claims the terminal a moment after it starts. Waiting for the first
-        // quiet reading keeps that startup from counting as a command.
-        let mut settled = false;
-        loop {
-            thread::sleep(Duration::from_millis(300));
-            if Arc::strong_count(&live) == 1 || live.output.0.lock().unwrap().exit.is_some() {
-                break;
+    let busy = move |live: &Live| match (
+        platform::foreground_group(&**live.master.lock().unwrap()),
+        shell,
+    ) {
+        (Some(group), Some(shell)) => group > 0 && group as u32 != shell,
+        _ => false,
+    };
+    // Read before this terminal can have been given any input: the shell owns the
+    // terminal at that point. Waiting for the first quiet reading instead would discard
+    // whatever was typed in the first fraction of a second, which on a loaded machine is
+    // often the command the terminal was opened for.
+    let mut settled = !busy(&live);
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_millis(300));
+        if Arc::strong_count(&live) == 1 || live.output.0.lock().unwrap().exit.is_some() {
+            break;
+        }
+        let running = busy(&live);
+        let mut activity = activity.lock().unwrap();
+        if running {
+            if settled && activity.busy_since.is_none() {
+                activity.busy_since = Some(Instant::now());
             }
-            let foreground = platform::foreground_group(&**live.master.lock().unwrap());
-            let busy = match (foreground, shell) {
-                (Some(group), Some(shell)) => group > 0 && group as u32 != shell,
-                _ => false,
-            };
-            let mut activity = activity.lock().unwrap();
-            if busy {
-                if settled && activity.busy_since.is_none() {
-                    activity.busy_since = Some(Instant::now());
-                }
-                continue;
-            }
-            settled = true;
-            if let Some(since) = activity.busy_since.take() {
-                activity.finished = Some(Finished {
-                    at: now(),
-                    // The poll interval costs the measurement up to a tick either way.
-                    seconds: since.elapsed().as_secs_f64().round() as u64,
-                    kind: "command",
-                });
-            }
+            continue;
+        }
+        settled = true;
+        if let Some(since) = activity.busy_since.take() {
+            activity.finished = Some(Finished {
+                at: now(),
+                // The poll interval costs the measurement up to a tick either way.
+                seconds: since.elapsed().as_secs_f64().round() as u64,
+                kind: "command",
+            });
         }
     });
 }
