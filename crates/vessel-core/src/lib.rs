@@ -107,10 +107,6 @@ struct Output {
     bells: usize,
 }
 struct Live {
-    /// ConPTY keeps its session only while the slave side stays open, so the drop that is
-    /// right after spawning on Unix would tear the console down here.
-    #[cfg(windows)]
-    _slave: Mutex<Box<dyn portable_pty::SlavePty + Send>>,
     master: Mutex<Box<dyn MasterPty + Send>>,
     writer: Mutex<Box<dyn Write + Send>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
@@ -276,8 +272,11 @@ impl Core {
         if let Some((program, args)) = program {
             command = platform::program_command(program, &args, &cwd)?;
         }
+        #[cfg(windows)]
+        eprintln!("SPAWN program={:?} cwd={:?}", command.get_argv(), cwd);
         let mut child = pair.slave.spawn_command(command)?;
-        #[cfg(unix)]
+        #[cfg(windows)]
+        eprintln!("SPAWN ok pid={:?}", child.process_id());
         drop(pair.slave);
         let pid = child.process_id();
         let killer = child.clone_killer();
@@ -297,8 +296,6 @@ impl Core {
         ));
         let activity: Arc<Mutex<Activity>> = Default::default();
         let live = Arc::new(Live {
-            #[cfg(windows)]
-            _slave: Mutex::new(pair.slave),
             master: Mutex::new(pair.master),
             writer: Mutex::new(writer),
             killer: Mutex::new(killer),
@@ -312,7 +309,21 @@ impl Core {
         let read_activity = activity.clone();
         thread::spawn(move || {
             let mut buf = [0u8; 32768];
-            while let Ok(n) = reader.read(&mut buf) {
+            #[cfg(windows)]
+            eprintln!("READER started");
+            loop {
+                let n = match reader.read(&mut buf) {
+                    Ok(n) => n,
+                    #[cfg(windows)]
+                    Err(e) => {
+                        eprintln!("READER error {e}");
+                        break;
+                    }
+                    #[cfg(not(windows))]
+                    Err(_) => break,
+                };
+                #[cfg(windows)]
+                eprintln!("READER got {n}");
                 if n == 0 {
                     break;
                 }
