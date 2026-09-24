@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/vessel-core", "src-tauri"]
+resolver = "2"

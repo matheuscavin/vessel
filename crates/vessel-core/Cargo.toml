@@ -1,0 +1,25 @@
+[package]
+name = "vessel-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+portable-pty = "0.9"
+directories = "6"
+toml = "0.8"
+fs2 = "0.4"
+vt100 = "0.15"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "vessel-daemon"
+path = "src/main.rs"
