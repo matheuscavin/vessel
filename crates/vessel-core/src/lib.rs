@@ -272,6 +272,8 @@ impl Core {
         if let Some((program, args)) = program {
             command = platform::program_command(program, &args, &cwd)?;
         }
+        #[cfg(windows)]
+        eprintln!("SPAWN cwd={cwd:?}");
         let mut child = pair.slave.spawn_command(command)?;
         drop(pair.slave);
         let pid = child.process_id();
@@ -306,6 +308,8 @@ impl Core {
         thread::spawn(move || {
             let mut buf = [0u8; 32768];
             while let Ok(n) = reader.read(&mut buf) {
+                #[cfg(windows)]
+                eprintln!("READER got {n}");
                 if n == 0 {
                     break;
                 }
@@ -348,6 +352,8 @@ impl Core {
         });
         thread::spawn(move || {
             let code = child.wait().map(|s| s.exit_code()).unwrap_or(1);
+            #[cfg(windows)]
+            eprintln!("CHILD exited {code}");
             output.0.lock().unwrap().exit = Some(code);
             output.1.notify_all();
         });
