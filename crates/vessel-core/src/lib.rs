@@ -272,11 +272,7 @@ impl Core {
         if let Some((program, args)) = program {
             command = platform::program_command(program, &args, &cwd)?;
         }
-        #[cfg(windows)]
-        eprintln!("SPAWN program={:?} cwd={:?}", command.get_argv(), cwd);
         let mut child = pair.slave.spawn_command(command)?;
-        #[cfg(windows)]
-        eprintln!("SPAWN ok pid={:?}", child.process_id());
         drop(pair.slave);
         let pid = child.process_id();
         let killer = child.clone_killer();
@@ -309,21 +305,7 @@ impl Core {
         let read_activity = activity.clone();
         thread::spawn(move || {
             let mut buf = [0u8; 32768];
-            #[cfg(windows)]
-            eprintln!("READER started");
-            loop {
-                let n = match reader.read(&mut buf) {
-                    Ok(n) => n,
-                    #[cfg(windows)]
-                    Err(e) => {
-                        eprintln!("READER error {e}");
-                        break;
-                    }
-                    #[cfg(not(windows))]
-                    Err(_) => break,
-                };
-                #[cfg(windows)]
-                eprintln!("READER got {n}");
+            while let Ok(n) = reader.read(&mut buf) {
                 if n == 0 {
                     break;
                 }

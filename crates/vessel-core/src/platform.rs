@@ -99,8 +99,27 @@ impl PathProvider for NativePathProvider {
         if !path.is_dir() {
             bail!("Choose a directory");
         }
-        Ok(path)
+        Ok(simplify(path))
     }
+}
+/// Windows canonicalization answers in extended-length form. A process cannot hold one of
+/// those as its current directory: it is created and then sits there, reading and writing
+/// nothing. Everything downstream, the shell included, wants the ordinary spelling.
+#[cfg(windows)]
+fn simplify(path: PathBuf) -> PathBuf {
+    let text = path.as_os_str().to_string_lossy().into_owned();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    match text.strip_prefix(r"\\?\") {
+        // Only a drive path is safe to shorten; anything else stays as it was given.
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path,
+    }
+}
+#[cfg(unix)]
+fn simplify(path: PathBuf) -> PathBuf {
+    path
 }
 
 /// Explicit program launch for local API consumers. Arguments never pass through a shell.
