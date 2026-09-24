@@ -90,6 +90,22 @@ fn real_pty_lifecycle_isolation_and_persistence() {
         .to_owned();
     request(json!({"op":"resize","id":tid,"rows":37,"cols":113}));
     let mut cursor = None;
+    // A directly launched program shares the PTY plumbing with the shell but none of its
+    // startup, so it says whether a silent terminal is the console or the shell.
+    #[cfg(windows)]
+    {
+        let probe = request(json!({"op":"createTerminal","sessionId":sid,"launch":false}))["state"]
+            ["selectedTerminal"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        request(
+            json!({"op":"startProcess","id":probe,"program":"cmd.exe","args":["/c","echo PROBE_READY"]}),
+        );
+        let mut probe_cursor = None;
+        collect(&probe, "PROBE_READY", &mut probe_cursor);
+        request(json!({"op":"closeTerminal","id":probe}));
+    }
     #[cfg(unix)] let command="printf '\\033[38;2;20;200;150mPTY_%s\\033[0m\\n' READY; stty size; printf 'secret=%s\\n' \"$VESSEL_TEST_SECRET\"\r";
     #[cfg(windows)]
     let command = "echo PTY_READY\r";
