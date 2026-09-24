@@ -122,15 +122,20 @@ fn real_pty_lifecycle_isolation_and_persistence() {
         request(json!({"op":"input","id":watched,"data":"sleep 2\r"}));
         let deadline = Instant::now();
         let attention = loop {
-            let attention =
-                request(json!({"op":"snapshot"}))["statuses"][&watched]["attention"].clone();
+            let snapshot = request(json!({"op":"snapshot"}));
+            let attention = snapshot["statuses"][&watched]["attention"].clone();
             if !attention.is_null() {
                 break attention;
             }
-            assert!(
-                deadline.elapsed() < Duration::from_secs(20),
-                "a finished command raised no attention"
-            );
+            if deadline.elapsed() >= Duration::from_secs(20) {
+                let screen = client_raw(json!({"op":"read","id":watched,"cursor":null})).unwrap();
+                panic!(
+                    "a finished command raised no attention\nstatus: {}\nconfig: {}\nscreen: {}",
+                    snapshot["statuses"][&watched],
+                    snapshot["config"],
+                    String::from_utf8_lossy(&screen[10..])
+                );
+            }
             thread::sleep(Duration::from_millis(200));
         };
         assert!(attention["seconds"].as_u64().unwrap() >= 1);
