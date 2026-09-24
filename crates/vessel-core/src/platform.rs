@@ -55,6 +55,15 @@ impl ShellProvider for NativeShellProvider {
             "APPDATA",
             "LOCALAPPDATA",
             "PATHEXT",
+            "SystemDrive",
+            "ProgramData",
+            "ProgramFiles",
+            "ProgramFiles(x86)",
+            "USERNAME",
+            "COMPUTERNAME",
+            "NUMBER_OF_PROCESSORS",
+            "PROCESSOR_ARCHITECTURE",
+            "OS",
         ] {
             if let Some(v) = std::env::var_os(key) {
                 cmd.env(key, v);

@@ -107,6 +107,10 @@ struct Output {
     bells: usize,
 }
 struct Live {
+    /// ConPTY keeps its session only while the slave side stays open, so the drop that is
+    /// right after spawning on Unix would tear the console down here.
+    #[cfg(windows)]
+    _slave: Mutex<Box<dyn portable_pty::SlavePty + Send>>,
     master: Mutex<Box<dyn MasterPty + Send>>,
     writer: Mutex<Box<dyn Write + Send>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
@@ -273,6 +277,7 @@ impl Core {
             command = platform::program_command(program, &args, &cwd)?;
         }
         let mut child = pair.slave.spawn_command(command)?;
+        #[cfg(unix)]
         drop(pair.slave);
         let pid = child.process_id();
         let killer = child.clone_killer();
@@ -292,6 +297,8 @@ impl Core {
         ));
         let activity: Arc<Mutex<Activity>> = Default::default();
         let live = Arc::new(Live {
+            #[cfg(windows)]
+            _slave: Mutex::new(pair.slave),
             master: Mutex::new(pair.master),
             writer: Mutex::new(writer),
             killer: Mutex::new(killer),
