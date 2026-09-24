@@ -16,7 +16,7 @@ Response: `u8 status` (`0` success, `1` error), `u32 length`, payload. Errors ar
 
 ## Finished commands
 
-A terminal status carries `attention` (`at`, `seconds`, `kind`) when the terminal has something to report. `kind` is `command` once a foreground command has run and handed the terminal back to its shell, read from the PTY's foreground process group: no shell integration, and anything the user runs counts. ConPTY exposes no equivalent, so Windows terminals never report that kind. `kind` is `bell` when a program rang the terminal bell, which is the only signal a tool that stays open between turns can give. `notifyAfterSeconds` filters short commands and never applies to a bell, `notifyOnBell` drops bells, `notifyEnabled` drops both, and `acknowledge` clears the mark when a client shows that terminal.
+A terminal status carries `attention` (`at`, `seconds`, `kind`) when the terminal has something to report. `kind` is `command` once a foreground command has run and handed the terminal back to its shell, read from the PTY's foreground process group: no shell integration, and anything the user runs counts. It depends on the shell's job control, which every interactive shell enables; a shell started without it never moves the foreground group and so never reports this kind. ConPTY exposes no equivalent, so Windows terminals never report it at all. `kind` is `bell` when a program rang the terminal bell, which is the only signal a tool that stays open between turns can give. `notifyAfterSeconds` filters short commands and never applies to a bell, `notifyOnBell` drops bells, `notifyEnabled` drops both, and `acknowledge` clears the mark when a client shows that terminal.
 
 ## Operations
 

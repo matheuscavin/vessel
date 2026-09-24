@@ -123,6 +123,19 @@ pub fn detach_daemon(cmd: &mut std::process::Command) {
         cmd.creation_flags(0x00000008 | 0x00000200);
     }
 }
+/// The foreground process group of a PTY, which is the shell's own at a prompt and the
+/// command's while one runs. ConPTY has no equivalent, so Windows always answers None.
+pub fn foreground_group(master: &dyn portable_pty::MasterPty) -> Option<i32> {
+    #[cfg(unix)]
+    {
+        master.process_group_leader()
+    }
+    #[cfg(windows)]
+    {
+        let _ = master;
+        None
+    }
+}
 /// The daemon leads its own session, so the group signal takes its shells with it.
 pub fn stop_process(pid: u32) {
     #[cfg(unix)]

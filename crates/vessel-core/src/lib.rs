@@ -918,6 +918,9 @@ impl Core {
 /// Polls the PTY's foreground process group. Unix only: ConPTY has no equivalent, so
 /// Windows terminals simply never report a finished command.
 fn watch_foreground(live: Arc<Live>, activity: Arc<Mutex<Activity>>, shell: Option<u32>) {
+    if !cfg!(unix) {
+        return;
+    }
     thread::spawn(move || {
         // A shell claims the terminal a moment after it starts. Waiting for the first
         // quiet reading keeps that startup from counting as a command.
@@ -927,7 +930,7 @@ fn watch_foreground(live: Arc<Live>, activity: Arc<Mutex<Activity>>, shell: Opti
             if Arc::strong_count(&live) == 1 || live.output.0.lock().unwrap().exit.is_some() {
                 break;
             }
-            let foreground = live.master.lock().unwrap().process_group_leader();
+            let foreground = platform::foreground_group(&**live.master.lock().unwrap());
             let busy = match (foreground, shell) {
                 (Some(group), Some(shell)) => group > 0 && group as u32 != shell,
                 _ => false,

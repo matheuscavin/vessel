@@ -110,7 +110,10 @@ fn real_pty_lifecycle_isolation_and_persistence() {
             .unwrap()
             .to_owned();
         let mut watched_cursor = None;
-        request(json!({"op":"input","id":watched,"data":"printf 'VESSEL_%s\\n' IDLE\r"}));
+        // Job control is what hands the terminal to a command and takes it back, and every
+        // interactive shell enables it. Asking for it explicitly keeps the test from
+        // depending on which shell the machine happens to provide.
+        request(json!({"op":"input","id":watched,"data":"set -m; printf 'VESSEL_%s\\n' IDLE\r"}));
         collect(&watched, "VESSEL_IDLE", &mut watched_cursor);
         let mut config = request(json!({"op":"snapshot"}))["config"].clone();
         config["notifyAfterSeconds"] = json!(1);
