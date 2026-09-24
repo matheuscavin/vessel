@@ -28,13 +28,42 @@ fn start() -> Daemon {
 fn request(v: Value) -> Value {
     rpc(v).unwrap()
 }
+fn status(tid: &str) -> String {
+    rpc(json!({"op":"getTerminalStatus","id":tid}))
+        .map(|v| v.to_string())
+        .unwrap_or_else(|e| e.to_string())
+}
+/// Sends `data` and waits for `needle`, resending while nothing comes back. A terminal
+/// that has only just been created may still be attaching its shell to the PTY, and input
+/// written before that can be dropped rather than queued.
+fn run(tid: &str, data: &str, needle: &str, cursor: &mut Option<u64>) -> String {
+    let start = Instant::now();
+    let mut text = String::new();
+    let mut sent: Option<Instant> = None;
+    while !text.contains(needle) {
+        if sent.is_none_or(|t| t.elapsed() >= Duration::from_secs(2)) {
+            request(json!({"op":"input","id":tid,"data":data}));
+            sent = Some(Instant::now());
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(20),
+            "Missing {needle}: status {} text {text}",
+            status(tid)
+        );
+        let bytes = client_raw(json!({"op":"read","id":tid,"cursor":cursor})).unwrap();
+        *cursor = Some(u64::from_be_bytes(bytes[..8].try_into().unwrap()));
+        text.push_str(&String::from_utf8_lossy(&bytes[10..]));
+    }
+    text
+}
 fn collect(tid: &str, needle: &str, cursor: &mut Option<u64>) -> String {
     let start = Instant::now();
     let mut text = String::new();
     while !text.contains(needle) {
         assert!(
             start.elapsed() < Duration::from_secs(10),
-            "Missing {needle}: {text}"
+            "Missing {needle}: status {} text {text}",
+            status(tid)
         );
         let bytes = client_raw(json!({"op":"read","id":tid,"cursor":cursor})).unwrap();
         *cursor = Some(u64::from_be_bytes(bytes[..8].try_into().unwrap()));
@@ -64,8 +93,7 @@ fn real_pty_lifecycle_isolation_and_persistence() {
     #[cfg(unix)] let command="printf '\\033[38;2;20;200;150mPTY_%s\\033[0m\\n' READY; stty size; printf 'secret=%s\\n' \"$VESSEL_TEST_SECRET\"\r";
     #[cfg(windows)]
     let command = "echo PTY_READY\r";
-    request(json!({"op":"input","id":tid,"data":command}));
-    let output = collect(&tid, "PTY_READY", &mut cursor);
+    let output = run(&tid, command, "PTY_READY", &mut cursor);
     #[cfg(unix)]
     {
         let all = if output.contains("37 113") {
@@ -113,8 +141,12 @@ fn real_pty_lifecycle_isolation_and_persistence() {
         // Job control is what hands the terminal to a command and takes it back, and every
         // interactive shell enables it. Asking for it explicitly keeps the test from
         // depending on which shell the machine happens to provide.
-        request(json!({"op":"input","id":watched,"data":"set -m; printf 'VESSEL_%s\\n' IDLE\r"}));
-        collect(&watched, "VESSEL_IDLE", &mut watched_cursor);
+        run(
+            &watched,
+            "set -m; printf 'VESSEL_%s\\n' IDLE\r",
+            "VESSEL_IDLE",
+            &mut watched_cursor,
+        );
         let mut config = request(json!({"op":"snapshot"}))["config"].clone();
         config["notifyAfterSeconds"] = json!(1);
         request(json!({"op":"configure","config":config.clone()}));
