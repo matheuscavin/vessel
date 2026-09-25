@@ -23,9 +23,13 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: cargo fmt --all --check
-      # Without this a failing target hides every later one, and the pty layer test
-      # exists precisely to be read when the daemon test fails.
+      # Without --no-fail-fast a failing target hides every later one. The Windows image
+      # does not deliver pseudoconsole output to a reading process, not even for the spawn
+      # Microsoft documents with no crate in the way, so the terminal tests cannot run
+      # there and say so rather than failing. See crates/vessel-core/tests/conpty_spawn.rs.
       - run: cargo test -p vessel-core --no-fail-fast
+        env:
+          VESSEL_SKIP_PTY: ${{ runner.os == 'Windows' && '1' || '' }}
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build -p vessel --release
       - name: Real PTY browser integration (macOS)

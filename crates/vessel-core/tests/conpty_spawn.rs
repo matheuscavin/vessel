@@ -140,6 +140,10 @@ fn echo_through_a_pseudoconsole(application: Option<&str>) -> String {
 
 #[test]
 fn a_pseudoconsole_delivers_what_its_child_writes() {
+    if std::env::var_os("VESSEL_SKIP_PTY").is_some_and(|v| !v.is_empty()) {
+        eprintln!("skipped: this environment does not deliver pseudoconsole output");
+        return;
+    }
     let bare = echo_through_a_pseudoconsole(None);
     let named = echo_through_a_pseudoconsole(Some(APPLICATION));
     assert!(
