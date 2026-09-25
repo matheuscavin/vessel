@@ -23,7 +23,9 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: cargo fmt --all --check
-      - run: cargo test -p vessel-core
+      # Without this a failing target hides every later one, and the pty layer test
+      # exists precisely to be read when the daemon test fails.
+      - run: cargo test -p vessel-core --no-fail-fast
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build -p vessel --release
       - name: Real PTY browser integration (macOS)
