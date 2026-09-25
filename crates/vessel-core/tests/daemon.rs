@@ -122,6 +122,8 @@ fn real_pty_lifecycle_isolation_and_persistence() {
     #[cfg(unix)] let command="printf '\\033[38;2;20;200;150mPTY_%s\\033[0m\\n' READY; stty size; printf 'secret=%s\\n' \"$VESSEL_TEST_SECRET\"\r";
     #[cfg(windows)]
     let command = "echo PTY_READY\r";
+    // Only the Unix assertions below read it back.
+    #[cfg_attr(windows, allow(unused_variables))]
     let output = run(&tid, command, "PTY_READY", &mut cursor);
     #[cfg(unix)]
     {
