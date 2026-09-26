@@ -69,6 +69,24 @@ impl ShellProvider for NativeShellProvider {
                 cmd.env(key, v);
             }
         }
+        // An app launched from the Dock inherits no locale at all, so the loop above finds
+        // nothing and the shell lands in the C locale, where pbcopy reads UTF-8 output back
+        // as Mac OS Roman. Declare the charset only; language and region stay unset rather
+        // than guessed.
+        #[cfg(unix)]
+        if !["LC_ALL", "LC_CTYPE", "LANG"]
+            .iter()
+            .any(|key| std::env::var_os(key).is_some())
+        {
+            cmd.env(
+                "LC_CTYPE",
+                if cfg!(target_os = "macos") {
+                    "UTF-8"
+                } else {
+                    "C.UTF-8"
+                },
+            );
+        }
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
         cmd.env("TERM_PROGRAM", "Vessel");

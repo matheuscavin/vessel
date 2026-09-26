@@ -6,10 +6,10 @@ export function joinWrapped(text: string, cols: number) {
   const lines = text.split("\n");
   if (lines.length < 2) return text;
   // The program's own gutters are unknown, so its widest row stands for its wrap width.
-  const width = Math.min(
-    cols,
-    Math.max(...lines.map((line) => line.trimEnd().length)),
-  );
+  // Walked rather than spread: a long selection is more arguments than a call can take.
+  let widest = 0;
+  for (const line of lines) widest = Math.max(widest, line.trimEnd().length);
+  const width = Math.min(cols, widest);
   // Rows that stop well short of the terminal stopped because the text did, not because
   // a margin was reached. Code and command output live down here; wrapped prose does not.
   if (width < cols * 0.6) return text;
