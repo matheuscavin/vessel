@@ -14,13 +14,19 @@ use std::{
     fs::{self, OpenOptions},
     io::{Read, Write},
     net::{TcpListener, TcpStream},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Condvar, Mutex, OnceLock},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 const MAX_FRAME: usize = 1024 * 1024;
 const HISTORY: usize = 1024 * 1024;
+/// A reader that stops asking is taken for gone, so the writer stops waiting on it.
+const READER_STALE: Duration = Duration::from_secs(2);
+/// How long a caught-up reader waits before answering with nothing. The condvar wakes it
+/// the instant a byte lands, so this only sets what an idle terminal costs; it has to stay
+/// well under the client's socket timeout.
+const IDLE_PARK: Duration = Duration::from_secs(10);
 fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -137,6 +143,13 @@ struct Core {
     config: Config,
     live: HashMap<String, Arc<Live>>,
     dir: PathBuf,
+    branches: HashMap<String, Branch>,
+}
+/// A session's branch and the HEAD that would have to change for the answer to differ.
+struct Branch {
+    head: PathBuf,
+    stamp: (SystemTime, u64),
+    name: String,
 }
 impl Core {
     fn load() -> Result<Self> {
@@ -188,6 +201,7 @@ impl Core {
             config,
             live: HashMap::new(),
             dir,
+            branches: HashMap::new(),
         })
     }
     /// The only place a session layout is assigned. Validates, stores, and refreshes the
@@ -224,21 +238,55 @@ impl Core {
             toml::to_string_pretty(&self.config)?.as_bytes(),
         )
     }
+    /// `git symbolic-ref` costs a process spawn, and a snapshot is taken every couple of
+    /// seconds for as long as the window is open. HEAD is the file that command reads, so
+    /// its timestamp is what decides whether the old answer still holds.
+    fn branch(&mut self, cwd: &str) -> String {
+        let stamp = |head: &Path| {
+            fs::metadata(head)
+                .and_then(|m| Ok((m.modified()?, m.len())))
+                .ok()
+        };
+        if let Some(cached) = self.branches.get(cwd) {
+            if stamp(&cached.head).is_some_and(|s| s == cached.stamp) {
+                return cached.name.clone();
+            }
+        }
+        let path = Path::new(cwd);
+        let name = git::run(path, &["symbolic-ref", "--short", "-q", "HEAD"])
+            .unwrap_or_else(|_| "detached HEAD".into());
+        // Resolved once per directory, and it survives the branch changing under it.
+        // A path git will not answer for stays uncached and keeps paying for the spawn.
+        let head = match self.branches.get(cwd) {
+            Some(cached) => Some(cached.head.clone()),
+            None => git::run(path, &["rev-parse", "--absolute-git-dir"])
+                .ok()
+                .map(|dir| PathBuf::from(dir).join("HEAD")),
+        };
+        if let Some((head, stamp)) = head.and_then(|h| stamp(&h).map(|s| (h, s))) {
+            self.branches.insert(
+                cwd.into(),
+                Branch {
+                    head,
+                    stamp,
+                    name: name.clone(),
+                },
+            );
+        }
+        name
+    }
     fn snapshot(&mut self) -> Value {
-        if let Some(session) = self
+        let selected = self
             .state
             .sessions
-            .iter_mut()
+            .iter()
             .find(|s| Some(&s.id) == self.state.selected_session.as_ref())
-        {
-            if session.repository.is_some() {
-                session.branch = Some(
-                    git::run(
-                        std::path::Path::new(&session.cwd),
-                        &["symbolic-ref", "--short", "-q", "HEAD"],
-                    )
-                    .unwrap_or_else(|_| "detached HEAD".into()),
-                );
+            .filter(|s| s.repository.is_some())
+            .map(|s| (s.id.clone(), s.cwd.clone()));
+        if let Some((sid, cwd)) = selected {
+            let branch = self.branch(&cwd);
+            if let Some(session) = self.state.sessions.iter_mut().find(|s| s.id == sid) {
+                session.branch = Some(branch);
             }
         }
         let threshold = u64::from(self.config.notify_after_seconds);
@@ -313,7 +361,7 @@ impl Core {
                 let mut out = read_output.0.lock().unwrap();
                 loop {
                     out.readers
-                        .retain(|_, (_, seen)| seen.elapsed() < Duration::from_secs(2));
+                        .retain(|_, (_, seen)| seen.elapsed() < READER_STALE);
                     let slowest = out.readers.values().map(|(cursor, _)| *cursor).min();
                     if slowest.is_none_or(|cursor| {
                         out.end.saturating_sub(cursor) + (n as u64) <= HISTORY as u64
@@ -1027,13 +1075,11 @@ fn handle(mut socket: TcpStream, core: Arc<Mutex<Core>>, token: &str) -> Result<
                     let cursor = v["cursor"].as_u64();
                     let (lock, notify) = &*live.output;
                     let mut out = lock.lock().unwrap();
-                    if cursor == Some(out.end) && !out.eof {
-                        out = notify
-                            .wait_timeout(out, Duration::from_millis(150))
-                            .unwrap()
-                            .0;
-                    }
-                    if let Some(reader) = v["readerId"].as_str() {
+                    // Registered before the wait rather than after it: a reader parked for
+                    // seconds would otherwise age out of the sweep above, and the writer
+                    // would stop holding output back for a reader that is still there.
+                    let reader = v["readerId"].as_str();
+                    if let Some(reader) = reader {
                         if reader.len() > 128
                             || (out.readers.len() >= 64 && !out.readers.contains_key(reader))
                         {
@@ -1043,6 +1089,16 @@ fn handle(mut socket: TcpStream, core: Arc<Mutex<Core>>, token: &str) -> Result<
                         out.readers
                             .insert(reader.into(), (acknowledged, Instant::now()));
                         notify.notify_all();
+                    }
+                    // A caught-up reader used to come back every 150ms with nothing, which
+                    // an idle terminal paid for all day. It waits out the park now, woken
+                    // early by the writer, and only ticks often enough to look alive.
+                    let deadline = Instant::now() + IDLE_PARK;
+                    while cursor == Some(out.end) && !out.eof && Instant::now() < deadline {
+                        out = notify.wait_timeout(out, READER_STALE / 2).unwrap().0;
+                        if let Some(entry) = reader.and_then(|r| out.readers.get_mut(r)) {
+                            entry.1 = Instant::now();
+                        }
                     }
                     let start = out.end - out.bytes.len() as u64;
                     let reset =
