@@ -9,6 +9,30 @@ import { joinWrapped } from "./copy";
 import { terminalTheme } from "./themes";
 import { commandDefinitions, matches } from "./commands";
 import type { Config } from "./types";
+type Renderer = {
+  addon: WebglAddon;
+  surface: HTMLCanvasElement | null;
+  atlas: Set<HTMLCanvasElement>;
+};
+// The addon's own dispose leaves its WebGL context and atlas pages to the collector. That
+// memory is GPU-backed and invisible to it, so a terminal has to release both by hand.
+function release({ addon, surface, atlas }: Renderer) {
+  const first = addon.textureAtlas;
+  if (first) atlas.add(first);
+  addon.dispose();
+  for (const page of atlas) {
+    page.width = 0;
+    page.height = 0;
+  }
+  atlas.clear();
+  if (!surface) return;
+  surface
+    .getContext("webgl2")
+    ?.getExtension("WEBGL_lose_context")
+    ?.loseContext();
+  surface.width = 0;
+  surface.height = 0;
+}
 export function TerminalView({
   id,
   active,
@@ -35,6 +59,7 @@ export function TerminalView({
   const host = useRef<HTMLDivElement>(null),
     term = useRef<Terminal | null>(null),
     fit = useRef<FitAddon | null>(null),
+    webgl = useRef<Renderer | null>(null),
     cfg = useRef(config);
   cfg.current = config;
   const [error, setError] = useState("");
@@ -137,6 +162,8 @@ export function TerminalView({
       element.removeEventListener("copy", copy, true);
       input.dispose();
       resize.dispose();
+      if (webgl.current) release(webgl.current);
+      webgl.current = null;
       x.dispose();
       term.current = null;
       fit.current = null;
@@ -155,13 +182,28 @@ export function TerminalView({
   useEffect(() => {
     if (!visible || !host.current || !term.current) return;
     const x = term.current;
-    let webgl: WebglAddon | undefined;
-    try {
-      webgl = new WebglAddon();
-      x.loadAddon(webgl);
-      webgl.onContextLoss(() => webgl?.dispose());
-    } catch {
-      /* Canvas/DOM rendering remains available. */
+    // One renderer per terminal, built the first time it is shown and kept afterwards.
+    // Rebuilding it on every visibility flip stranded a context and an atlas per switch.
+    if (!webgl.current) {
+      try {
+        const existing = new Set(host.current.querySelectorAll("canvas"));
+        const addon = new WebglAddon();
+        const atlas = new Set<HTMLCanvasElement>();
+        addon.onAddTextureAtlasCanvas((page) => atlas.add(page));
+        x.loadAddon(addon);
+        const surface =
+          [...host.current.querySelectorAll("canvas")].find(
+            (c) => !existing.has(c),
+          ) ?? null;
+        const renderer: Renderer = { addon, surface, atlas };
+        webgl.current = renderer;
+        addon.onContextLoss(() => {
+          release(renderer);
+          if (webgl.current === renderer) webgl.current = null;
+        });
+      } catch {
+        /* Canvas/DOM rendering remains available. */
+      }
     }
     const resize = () => {
       if (host.current?.clientWidth && host.current.clientHeight)
@@ -173,9 +215,7 @@ export function TerminalView({
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
-      webgl?.dispose();
     };
-    // Focus is deliberately not a dependency: it would recreate the WebGL context on every pane switch.
   }, [visible, generation]);
   useEffect(() => {
     if (visible && active) term.current?.focus();

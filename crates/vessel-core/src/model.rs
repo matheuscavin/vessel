@@ -75,6 +75,9 @@ pub struct Config {
 }
 /// Synthesized in the client, so these are names rather than files.
 pub const SOUNDS: [&str; 3] = ["Chime", "Ping", "Knock"];
+/// Every retained line is a full row of cells in the webview, so this is a memory ceiling
+/// rather than a preference. It is clamped on load, not only on save.
+pub const MAX_SCROLLBACK: u32 = 10_000;
 impl Default for Config {
     fn default() -> Self {
         Self {

@@ -1982,7 +1982,7 @@ function SettingsView({
                 <input
                   type="number"
                   min={0}
-                  max={50000}
+                  max={10000}
                   step={1000}
                   value={draft.scrollback}
                   onChange={(e) => update("scrollback", +e.target.value)}

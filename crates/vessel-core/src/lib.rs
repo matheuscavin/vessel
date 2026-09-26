@@ -178,10 +178,11 @@ impl Core {
                 .and_then(|r| layout::repair(r, &owned));
             session.layout.project();
         }
-        let config = read_saved(&dir.join("config.toml"))?
+        let mut config: Config = read_saved(&dir.join("config.toml"))?
             .map(|s| toml::from_str(&s))
             .transpose()?
             .unwrap_or_default();
+        config.scrollback = config.scrollback.min(MAX_SCROLLBACK);
         Ok(Self {
             state,
             config,
@@ -896,7 +897,7 @@ impl Core {
                 let cfg: Config = serde_json::from_value(v["config"].clone())?;
                 if !(9..=32).contains(&cfg.font_size)
                     || !(1.0..=2.0).contains(&cfg.line_height)
-                    || cfg.scrollback > 50000
+                    || cfg.scrollback > MAX_SCROLLBACK
                     || cfg.sound_volume > 100
                     || cfg.notify_after_seconds > 3600
                     || cfg.sound_cooldown_seconds > 3600
