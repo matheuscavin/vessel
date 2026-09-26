@@ -125,24 +125,24 @@ kbd {
   --line: color-mix(in srgb, var(--muted) 14%, transparent);
 }
 .topbar {
-  height: 62px;
+  height: 44px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   border-bottom: 1px solid var(--line);
-  padding: 0 20px;
-  gap: 24px;
+  padding: 0 14px;
+  gap: 16px;
   background: var(--panel);
 }
 .brand {
-  width: 182px;
+  width: 150px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   color: var(--accent);
 }
 .brand > span {
-  font-size: 23px;
+  font-size: 17px;
   letter-spacing: -1px;
   font-weight: 650;
   color: var(--text);
@@ -159,7 +159,7 @@ kbd {
   overflow: auto;
 }
 .workspace-tab {
-  height: 35px;
+  height: 28px;
   white-space: nowrap;
   display: flex;
   align-items: center;
@@ -171,8 +171,8 @@ kbd {
   height: 100%;
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 0 12px;
+  gap: 7px;
+  padding: 0 10px;
   color: inherit;
 }
 .workspace-tab.selected {
@@ -187,9 +187,9 @@ kbd {
   opacity: 0.55;
 }
 .workspace-mark {
-  font-size: 10px;
-  width: 19px;
-  height: 19px;
+  font-size: 9px;
+  width: 17px;
+  height: 17px;
   display: grid;
   place-items: center;
   color: var(--swatch);
@@ -218,11 +218,15 @@ kbd {
 .workspace-add {
   margin-left: 4px;
 }
+.topbar .icon-button {
+  width: 27px;
+  height: 27px;
+}
 .header-actions {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
 }
 .command-trigger {
   display: flex;
@@ -235,8 +239,8 @@ kbd {
 .command-trigger kbd {
   font-size: 10px;
   border: 1px solid var(--line);
-  padding: 3px 5px;
-  margin-left: 16px;
+  padding: 2px 5px;
+  margin-left: 10px;
   border-radius: 4px;
 }
 .header-divider {
@@ -1333,10 +1337,10 @@ input[type="range"] {
     width: 210px;
   }
   .brand {
-    width: 157px;
+    width: 130px;
   }
   .topbar {
-    gap: 14px;
+    gap: 12px;
   }
   .welcome-steps {
     gap: 20px;

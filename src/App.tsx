@@ -561,7 +561,7 @@ export function App() {
     <div className="app" style={style}>
       <header className="topbar">
         <div className="brand">
-          <Anchor size={22} strokeWidth={1.6} />
+          <Anchor size={17} strokeWidth={1.6} />
           <span>
             vessel<span className="brand-dot">.</span>
           </span>
