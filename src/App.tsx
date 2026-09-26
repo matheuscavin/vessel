@@ -694,7 +694,12 @@ export function App() {
                 return (
                   <div
                     key={s.id}
-                    className={`session-item ${session?.id === s.id ? "selected" : ""}`}
+                    className={`session-item ${session?.id === s.id ? "selected" : ""} ${s.color ? "tinted" : ""}`}
+                    style={
+                      s.color
+                        ? ({ "--swatch": accentHex(s.color) } as CSSProperties)
+                        : undefined
+                    }
                   >
                     <button
                       onClick={() => select(workspace!.id, s.id)}
@@ -704,12 +709,16 @@ export function App() {
                           entity: "session",
                           id: s.id,
                           name: s.name,
+                          color: s.color,
                         })
                       }
                     >
                       <div className="session-title">
                         <Layers size={15} />
                         <span>{s.name}</span>
+                        {s.label && (
+                          <span className="session-label">{s.label}</span>
+                        )}
                         <span className={`status-dot ${alive ? "live" : ""}`} />
                         {waitingSessions.has(s.id) && (
                           <i
@@ -729,6 +738,9 @@ export function App() {
                             <Folder size={11} />
                             <span>Local session</span>
                           </>
+                        )}
+                        {s.origin && (
+                          <span className="session-origin">{s.origin}</span>
                         )}
                         <span className="terminal-count">{ts.length}</span>
                       </div>
@@ -1358,7 +1370,9 @@ function DialogView({
 }) {
   const colorable =
     dialog.kind === "rename" &&
-    (dialog.entity === "workspace" || dialog.entity === "terminal");
+    (dialog.entity === "workspace" ||
+      dialog.entity === "session" ||
+      dialog.entity === "terminal");
   const destructive =
     dialog.kind === "close" ||
     dialog.kind === "delete-workspace" ||

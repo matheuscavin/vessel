@@ -649,6 +649,9 @@ impl Core {
                     created_at: now(),
                     updated_at: now(),
                     layout: SessionLayout::default(),
+                    color: None,
+                    label: None,
+                    origin: tag(v, "origin")?,
                 });
                 self.state.selected_workspace = Some(wid.clone());
                 self.state
@@ -785,6 +788,16 @@ impl Core {
                             .context("Workspace not found")?
                             .color = color
                     }
+                    "session" => {
+                        let s = self
+                            .state
+                            .sessions
+                            .iter_mut()
+                            .find(|s| s.id == target)
+                            .context("Session not found")?;
+                        s.color = color;
+                        s.updated_at = now();
+                    }
                     "terminal" => {
                         self.state
                             .terminals
@@ -806,6 +819,18 @@ impl Core {
                 let ids: Vec<String> =
                     serde_json::from_value(v.get("terminalIds").cloned().unwrap_or(json!([])))?;
                 self.apply_layout(&sid, layout::from_legacy(direction, &ids))?;
+            }
+            "setLabel" => {
+                let target = field(v, "id")?;
+                let label = tag(v, "label")?;
+                let s = self
+                    .state
+                    .sessions
+                    .iter_mut()
+                    .find(|s| s.id == target)
+                    .context("Session not found")?;
+                s.label = label;
+                s.updated_at = now();
             }
             "setLayoutTree" => {
                 let sid = field(v, "sessionId")?.to_owned();
@@ -960,6 +985,23 @@ fn watch_foreground(live: Arc<Live>, activity: Arc<Mutex<Activity>>, shell: Opti
 }
 fn field<'a>(v: &'a Value, key: &str) -> Result<&'a str> {
     v[key].as_str().with_context(|| format!("Missing {key}"))
+}
+/// A short free-text tag a client attaches to a session. Bounded and stripped of control
+/// characters, because it is rendered beside a name the user gave.
+fn tag(v: &Value, key: &str) -> Result<Option<String>> {
+    match v[key].as_str() {
+        None => Ok(None),
+        Some(s) => {
+            let s = s.trim();
+            if s.is_empty() {
+                return Ok(None);
+            }
+            if s.chars().count() > 24 || s.chars().any(char::is_control) {
+                bail!("{key} must be 1\u{2013}24 characters and contain no control characters");
+            }
+            Ok(Some(s.into()))
+        }
+    }
 }
 fn name(v: &Value) -> Result<String> {
     let s = field(v, "name")?.trim();

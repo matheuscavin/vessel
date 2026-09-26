@@ -336,12 +336,23 @@ fn real_pty_lifecycle_isolation_and_persistence() {
     assert!(rpc(json!({"op":"setLayoutTree","sessionId":sid,"root":zero})).is_err());
     // Deleting a session takes its terminals with it and leaves the directory on disk alone.
     let extra = request(
-        json!({"op":"createSession","workspaceId":wid,"name":"Disposable","path":temp.path().to_str().unwrap()}),
+        json!({"op":"createSession","workspaceId":wid,"name":"Disposable","path":temp.path().to_str().unwrap(),"origin":"sailor"}),
     );
     let extra_sid = extra["state"]["selectedSession"]
         .as_str()
         .unwrap()
         .to_owned();
+    // Origin records the client that asked for the session. Vessel reads nothing into it.
+    let created = extra["state"]["sessions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == extra_sid.as_str())
+        .unwrap()
+        .clone();
+    assert_eq!(created["origin"], "sailor");
+    assert!(created["label"].is_null());
+    assert!(rpc(json!({"op":"createSession","workspaceId":wid,"name":"Rejected","path":temp.path().to_str().unwrap(),"origin":"an origin string far longer than allowed"})).is_err());
     let extra_tid = request(json!({"op":"createTerminal","sessionId":extra_sid}))["state"]
         ["selectedTerminal"]
         .as_str()
@@ -374,7 +385,20 @@ fn real_pty_lifecycle_isolation_and_persistence() {
     let cleared = request(json!({"op":"setColor","kind":"terminal","id":tid,"color":null}));
     assert!(cleared["state"]["terminals"][0]["color"].is_null());
     assert!(rpc(json!({"op":"setColor","kind":"workspace","id":wid,"color":"#bada55"})).is_err());
-    assert!(rpc(json!({"op":"setColor","kind":"session","id":sid,"color":"lilac"})).is_err());
+    // A session carries a colour too, so a client that owns one can mark it in the sidebar.
+    let colored = request(json!({"op":"setColor","kind":"session","id":sid,"color":"moss"}));
+    assert_eq!(colored["state"]["sessions"][0]["color"], "moss");
+    assert!(rpc(json!({"op":"setColor","kind":"session","id":sid,"color":"chartreuse"})).is_err());
+    // A label is a few characters of state Vessel stores and never interprets.
+    let labelled = request(json!({"op":"setLabel","id":sid,"label":"working"}));
+    assert_eq!(labelled["state"]["sessions"][0]["label"], "working");
+    let cleared = request(json!({"op":"setLabel","id":sid,"label":null}));
+    assert!(cleared["state"]["sessions"][0]["label"].is_null());
+    assert!(
+        rpc(json!({"op":"setLabel","id":sid,"label":"a label far longer than the panel"})).is_err()
+    );
+    assert!(rpc(json!({"op":"setLabel","id":sid,"label":"two\nlines"})).is_err());
+    assert!(rpc(json!({"op":"setLabel","id":"missing","label":"working"})).is_err());
     // Deleting a workspace takes its sessions and terminals with it and moves the selection.
     let deleted = request(json!({"op":"deleteWorkspace","id":other}));
     assert_eq!(deleted["state"]["workspaces"].as_array().unwrap().len(), 1);

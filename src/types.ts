@@ -14,6 +14,11 @@ export interface Session {
   createdAt: number;
   updatedAt: number;
   layout: SessionLayout;
+  color?: string | null;
+  /** A few characters of state from whoever created the session. Rendered, never read. */
+  label?: string | null;
+  /** The client that asked for this session. Vessel attaches no meaning to it. */
+  origin?: string | null;
 }
 export type Axis = "row" | "column";
 export type Pane =

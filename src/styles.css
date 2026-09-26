@@ -344,6 +344,48 @@ kbd {
   background: var(--accent);
   border-radius: 2px;
 }
+/** A session someone tinted keeps its colour whether or not it is the selected one, so a
+    sidebar of them reads as a set. Declared after .selected:before so it wins on order. */
+.session-item.tinted:before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 17px;
+  bottom: 17px;
+  width: 2px;
+  background: var(--swatch);
+  border-radius: 2px;
+  opacity: 0.75;
+}
+.session-item.tinted.selected:before {
+  opacity: 1;
+}
+.session-item.tinted .session-title svg {
+  color: var(--swatch);
+}
+/** Free text from whoever made the session. Vessel renders it and reads nothing into it. */
+.session-label {
+  font:
+    9px/1 "DM Sans",
+    sans-serif;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 3px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: var(--swatch, var(--muted));
+  background: color-mix(in srgb, var(--swatch, var(--muted)) 13%, transparent);
+}
+.session-origin {
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--swatch, var(--muted));
+  opacity: 0.7;
+  flex-shrink: 0;
+}
 .session-title {
   display: flex;
   align-items: center;

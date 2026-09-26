@@ -26,7 +26,7 @@ A terminal status carries `attention` (`at`, `seconds`, `kind`) when the termina
 | `snapshot` | — | Structural state, config, live statuses, config path |
 | `acknowledge` | terminal `id` | Snapshot; clears the terminal's finished-command mark |
 | `createWorkspace` | `name` | Snapshot |
-| `createSession` | `workspaceId`, `name`, `path`, `mode` | Snapshot |
+| `createSession` | `workspaceId`, `name`, `path`, `mode`, optional `origin` | Snapshot |
 | `createTerminal` | `sessionId`, optional `name`, `launch` (default true) | Snapshot |
 | `startProcess` | terminal `id`, `program`, `args: string[]` | Snapshot |
 | `restartTerminal` | `id` | Snapshot; launches configured shell |
@@ -35,7 +35,8 @@ A terminal status carries `attention` (`at`, `seconds`, `kind`) when the termina
 | `listTerminals` | optional `sessionId` | Terminals |
 | `getTerminalStatus` | `id` | `state`, `pid`, optional `exitCode` |
 | `rename` | `kind` (workspace/session/terminal), `id`, `name` | Snapshot |
-| `setColor` | `kind` (workspace/terminal), `id`, nullable `color` | Snapshot; color must be a known palette token |
+| `setColor` | `kind` (workspace/session/terminal), `id`, nullable `color` | Snapshot; color must be a known palette token |
+| `setLabel` | session `id`, nullable `label` | Snapshot; 1–24 characters, no control characters |
 | `deleteSession` | `id` | Snapshot; ends the session's terminals, leaves disk untouched |
 | `deleteWorkspace` | `id` | Snapshot; ends every terminal under it, leaves disk untouched |
 | `select` | `workspaceId`, nullable `sessionId`, nullable `terminalId` | Snapshot |
@@ -52,6 +53,8 @@ A terminal status carries `attention` (`at`, `seconds`, `kind`) when the termina
 | `read` | `id`, nullable `cursor`, optional `readerId` | Binary frame below |
 
 `createSession.mode`: `none` uses the directory directly (Git optional); `existing` requires `worktreePath` belonging to the repository; `create` requires absolute `worktreePath`, `branch`, and `newBranch` boolean. Worktree paths with spaces are supported. Git errors are returned verbatim without executing user text in a shell.
+
+A session carries two fields for the client that owns it. `origin` is set once at `createSession`, names the client that asked for the session, and is bounded the same way a label is; it lets a client find its own sessions again after a restart. `label` is a few characters of state a client may set at any time with `setLabel`. Vessel stores and renders both and interprets neither: they carry no meaning to the daemon, grant nothing, and are never parsed. A client that writes no `origin` is indistinguishable from the user opening a session by hand, which is the intended default.
 
 `createTerminal` with `launch:false` creates stopped terminal metadata. A future consumer can then call `startProcess` to launch any executable directly. A terminal may have one live process at a time. Each restart creates a new OS process. Commands and argv are not persisted; restarts use the configured shell. No process is classified as an AI agent by the base protocol.
 

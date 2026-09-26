@@ -36,6 +36,16 @@ pub struct Session {
     pub updated_at: u64,
     #[serde(default)]
     pub layout: SessionLayout,
+    #[serde(default)]
+    pub color: Option<String>,
+    /// A few characters of state, set by whoever created the session and meaningless to
+    /// Vessel: it is rendered beside the name and never interpreted.
+    #[serde(default)]
+    pub label: Option<String>,
+    /// Who created this session. Vessel classifies no process; it only records the
+    /// client that asked for one, so a client can find its own sessions again.
+    #[serde(default)]
+    pub origin: Option<String>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
