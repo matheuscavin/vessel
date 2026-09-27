@@ -9,29 +9,18 @@ import { joinWrapped } from "./copy";
 import { terminalTheme } from "./themes";
 import { commandDefinitions, matches } from "./commands";
 import type { Config } from "./types";
-type Renderer = {
-  addon: WebglAddon;
-  surface: HTMLCanvasElement | null;
-  atlas: Set<HTMLCanvasElement>;
-};
-// The addon's own dispose leaves its WebGL context and atlas pages to the collector. That
-// memory is GPU-backed and invisible to it, so a terminal has to release both by hand.
-function release({ addon, surface, atlas }: Renderer) {
-  const first = addon.textureAtlas;
-  if (first) atlas.add(first);
+type Renderer = { addon: WebglAddon; surface: HTMLCanvasElement | null };
+// The addon's dispose leaves the WebGL context for the collector to find, and that memory
+// is GPU-backed and invisible to it, so the context is ended by hand. Nothing else here
+// belongs to this terminal: the glyph atlas is shared by every terminal with the same font
+// and theme, and the addon already refcounts it through removeTerminalFromCache. Freeing
+// its pages from here blanks the terminals that are still drawing from them.
+function release({ addon, surface }: Renderer) {
   addon.dispose();
-  for (const page of atlas) {
-    page.width = 0;
-    page.height = 0;
-  }
-  atlas.clear();
-  if (!surface) return;
   surface
-    .getContext("webgl2")
+    ?.getContext("webgl2")
     ?.getExtension("WEBGL_lose_context")
     ?.loseContext();
-  surface.width = 0;
-  surface.height = 0;
 }
 export function TerminalView({
   id,
@@ -182,28 +171,26 @@ export function TerminalView({
   useEffect(() => {
     if (!visible || !host.current || !term.current) return;
     const x = term.current;
-    // One renderer per terminal, built the first time it is shown and kept afterwards.
-    // Rebuilding it on every visibility flip stranded a context and an atlas per switch.
-    if (!webgl.current) {
-      try {
-        const existing = new Set(host.current.querySelectorAll("canvas"));
-        const addon = new WebglAddon();
-        const atlas = new Set<HTMLCanvasElement>();
-        addon.onAddTextureAtlasCanvas((page) => atlas.add(page));
-        x.loadAddon(addon);
-        const surface =
-          [...host.current.querySelectorAll("canvas")].find(
-            (c) => !existing.has(c),
-          ) ?? null;
-        const renderer: Renderer = { addon, surface, atlas };
-        webgl.current = renderer;
-        addon.onContextLoss(() => {
-          release(renderer);
-          if (webgl.current === renderer) webgl.current = null;
-        });
-      } catch {
-        /* Canvas/DOM rendering remains available. */
-      }
+    // A renderer lives only while its terminal is on screen. Holding one per terminal
+    // instead would keep as many WebGL contexts alive as there are terminals, and a
+    // browser drops the oldest once it has too many. What leaked before was never the
+    // rebuilding, it was the context surviving the dispose.
+    try {
+      const existing = new Set(host.current.querySelectorAll("canvas"));
+      const addon = new WebglAddon();
+      x.loadAddon(addon);
+      const surface =
+        [...host.current.querySelectorAll("canvas")].find(
+          (c) => !existing.has(c),
+        ) ?? null;
+      const renderer: Renderer = { addon, surface };
+      webgl.current = renderer;
+      addon.onContextLoss(() => {
+        release(renderer);
+        if (webgl.current === renderer) webgl.current = null;
+      });
+    } catch {
+      /* Canvas/DOM rendering remains available. */
     }
     const resize = () => {
       if (host.current?.clientWidth && host.current.clientHeight)
@@ -215,6 +202,8 @@ export function TerminalView({
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
+      if (webgl.current) release(webgl.current);
+      webgl.current = null;
     };
   }, [visible, generation]);
   useEffect(() => {
